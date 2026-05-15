@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>农作物浇水计算器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        body {
+            background-color: #f5f7fa;
+            padding: 15px;
+        }
+        .card {
+            background: #fff;
+            border-radius: 10px;
+            padding: 18px;
+            margin-bottom: 15px;
+        }
+        h1 {
+            text-align: center;
+            font-size: 20px;
+            margin-bottom: 20px;
+            color: #333;
+            font-weight: 600;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #555;
+            font-size: 14px;
+        }
+        .flat-radio {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .flat-radio label {
+            padding: 6px 12px;
+            background: #f1f3f6;
+            border-radius: 4px;
+            font-size: 14px;
+            margin: 0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .flat-radio input {
+            display: none;
+        }
+        .flat-radio input:checked + label {
+            background: #27ae60;
+            color: #fff;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            font-size: 15px;
+            background: #fafafa;
+            margin-top: 10px;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #27ae60;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 500;
+        }
+        button:active {
+            background-color: #219653;
+        }
+        .result {
+            display: none;
+        }
+        .title-tip {
+            font-size: 15px;
+            font-weight: 500;
+            margin: 10px 0 10px;
+            color: #333;
+        }
+        .time-item {
+            padding: 11px;
+            background: #f8f9fa;
+            margin: 6px 0;
+            border-radius: 6px;
+            font-size: 14px;
+            color: #333;
+            border-left: 3px solid #27ae60;
+        }
+        .mature-item {
+            padding: 12px;
+            background: #fef2f2;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 500;
+            color: #c0392b;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+        #customTime {
+            display:none;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🌾 农作物浇水计算器</h1>
+
+        <div class="form-group">
+            <label>作物时长(小时)</label>
+            <div class="flat-radio">
+                <input type="radio" name="cropTime" id="t16" value="16">
+                <label for="t16">16</label>
+                <input type="radio" name="cropTime" id="t20" value="20" checked>
+                <label for="t20">20</label>
+                <input type="radio" name="cropTime" id="t28" value="28">
+                <label for="t28">28</label>
+                <input type="radio" name="cropTime" id="tcus" value="custom">
+                <label for="tcus">自定义</label>
+            </div>
+            <input type="number" id="customTime" placeholder="输入自定义小时数" min="1">
+        </div>
+
+        <div class="form-group">
+            <label>好友人数</label>
+            <div class="flat-radio">
+                <input type="radio" name="friendNum" id="f0" value="0">
+                <label for="f0">0人</label>
+                <input type="radio" name="friendNum" id="f1" value="1">
+                <label for="f1">1人</label>
+                <input type="radio" name="friendNum" id="f2" value="2">
+                <label for="f2">2人</label>
+                <input type="radio" name="friendNum" id="f3" value="3">
+                <label for="f3">3人</label>
+                <input type="radio" name="friendNum" id="f4" value="4" checked>
+                <label for="f4">4人</label>
+            </div>
+        </div>
+
+        <button onclick="calculate()">立即计算</button>
+    </div>
+
+    <div class="card result" id="resultCard">
+        <div class="title-tip" id="matureTitle">🌱 最早可收获时间</div>
+        <div id="matureTimeShow" class="mature-item"></div>
+
+        <div class="title-tip">⏰ 三次浇水时间</div>
+        <div id="waterTimes"></div>
+    </div>
+
+<script>
+const CACHE_KEY = 'cropCalcCache';
+
+window.onload = function(){
+    loadCache();
+    bindRadioChange();
+}
+
+function bindRadioChange(){
+    document.querySelectorAll('input[name="cropTime"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            document.getElementById('customTime').style.display = 
+                radio.value === 'custom' ? 'block' : 'none';
+        });
+    });
+}
+
+// 时分格式化
+function fmtHM(hours){
+    let h = Math.floor(hours);
+    let m = Math.round((hours - h) * 60);
+    return `${h}小时${m}分`;
+}
+
+function fmtFull(d) {
+    return d.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+}
+
+// 读取缓存
+function loadCache(){
+    let cacheStr = localStorage.getItem(CACHE_KEY);
+    if(!cacheStr) {
+        document.getElementById('t20').checked = true;
+        document.getElementById('f4').checked = true;
+        return;
+    }
+    let cache = JSON.parse(cacheStr);
+
+    if(cache.cropVal){
+        document.querySelector(`input[name="cropTime"][value="${cache.cropVal}"]`).checked = true;
+        if(cache.cropVal === 'custom'){
+            document.getElementById('customTime').style.display = 'block';
+            document.getElementById('customTime').value = cache.customNum || '';
+        }
+    }
+    if(cache.friendNum !== undefined){
+        document.querySelector(`input[name="friendNum"][value="${cache.friendNum}"]`).checked = true;
+    }
+    if(cache.time1 && cache.time2 && cache.time3 && cache.mature){
+        renderResult(cache.time1,cache.time2,cache.time3,cache.mature);
+    }
+}
+
+// 保存缓存
+function saveCache(cropVal,customNum,friendNum,t1,t2,t3,tm){
+    let cache = {
+        cropVal, customNum, friendNum,
+        time1:t1, time2:t2, time3:t3, mature:tm
+    };
+    localStorage.setItem(CACHE_KEY,JSON.stringify(cache));
+}
+
+// 渲染结果
+function renderResult(t1,t2,t3,tm){
+    const time1 = new Date(t1);
+    const time2 = new Date(t2);
+    const time3 = new Date(t3);
+    const matureTime = new Date(tm);
+
+    document.getElementById('resultCard').style.display = 'block';
+
+    document.getElementById('waterTimes').innerHTML = `
+        <div class="time-item">第1次浇水：${fmtFull(time1)}</div>
+        <div class="time-item">第2次浇水：${fmtFull(time2)}</div>
+        <div class="time-item">第3次浇水：${fmtFull(time3)}</div>
+    `;
+
+    document.getElementById('matureTimeShow').innerText = fmtFull(matureTime);
+
+    // 计算剩余时间
+    let now = new Date();
+    let diffHour = (matureTime - now) / (1000 * 3600);
+    if(diffHour < 0) diffHour = 0;
+    document.getElementById('matureTitle').innerText = `🌱 最早可收获时间（${fmtHM(diffHour)}）`;
+}
+
+// 核心算法 完全按你公式重写
+function calculate() {
+    // 1. 获取输入
+    let totalHours;
+    const cropTimeRadio = document.querySelector('input[name="cropTime"]:checked').value;
+    if (cropTimeRadio === 'custom') {
+        totalHours = parseFloat(document.getElementById('customTime').value);
+        if (!totalHours || totalHours <= 0) {
+            alert('请输入有效的时长！');
+            return;
+        }
+    } else {
+        totalHours = parseFloat(cropTimeRadio);
+    }
+
+    const friendCnt = parseInt(document.querySelector('input[name="friendNum"]:checked').value);
+    const friendPct = friendCnt * 2.5;
+
+    const startTime = new Date();
+
+    // 固定常量
+    const perWait = 6;
+    const perReduce = 1.75;
+    const baseLeftAfterTwoRound = 31; // 两轮24%+各减7%后剩余31%
+
+    // 1、前两次浇水 固定24%、48% 不受好友影响
+    const pct1 = 24;
+    const pct2 = 48;
+    const time1 = new Date(startTime.getTime() + totalHours * pct1 / 100 * 3600 * 1000);
+    const time2 = new Date(startTime.getTime() + totalHours * pct2 / 100 * 3600 * 1000);
+
+    // 2、扣除好友剩余比例
+    let remainLeft = baseLeftAfterTwoRound - friendPct;
+    if(remainLeft < 0) remainLeft = 0;
+
+    // 3、按你给的公式计算最后等待比例
+    let lastWaitPct = remainLeft * perWait / (perWait + perReduce);
+
+    // 4、第三次浇水总进度
+    const pct3 = 48 + lastWaitPct;
+    const time3 = new Date(startTime.getTime() + totalHours * pct3 / 100 * 3600 * 1000);
+
+    renderResult(time1,time2,time3,time3);
+    saveCache(cropTimeRadio, cropTimeRadio==='custom'?totalHours:'', friendCnt, time1,time2,time3,time3);
+}
+</script>
+</body>
+</html>
